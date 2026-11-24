@@ -73,6 +73,7 @@ python main.py schedule daily
 | Project plan & assumptions | [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) |
 | Market research (Phase 1) | [docs/MARKET_RESEARCH.md](docs/MARKET_RESEARCH.md) |
 | System architecture | [docs/SYSTEM_ARCHITECTURE.md](docs/SYSTEM_ARCHITECTURE.md) |
+| **Automated paper trading on GitHub Actions** | [docs/AUTOMATION.md](docs/AUTOMATION.md) |
 | Official NSE/BSE exchange data | [docs/EXCHANGE_DATA.md](docs/EXCHANGE_DATA.md) |
 | Data requirements / import guide | [docs/DATA_REQUIREMENTS.md](docs/DATA_REQUIREMENTS.md), [docs/DATA_IMPORT_GUIDE.md](docs/DATA_IMPORT_GUIDE.md) |
 | Strategies (plain English + maths) | [docs/STRATEGIES.md](docs/STRATEGIES.md) |

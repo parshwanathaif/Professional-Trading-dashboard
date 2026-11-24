@@ -1,0 +1,175 @@
+name: Automated paper trading
+
+# Fully automated PAPER trading (no broker connectivity, no real orders).
+# Daily after the NSE close: fetch official NSE/BSE archive files -> data-quality gate ->
+# regime/signals -> independent risk engine -> simulated fills -> reports.
+# Weekly review on Saturday; monthly strategy reassessment on the first Saturday.
+#
+# State (exchange files, DuckDB, paper ledger, research results) persists in the Actions
+# CACHE, which only this repository's workflows can read. Exchange data are never committed
+# or uploaded as artifacts (personal research use; no redistribution).
+
+on:
+  schedule:
+    - cron: "45 13 * * 1-5"   # 19:15 IST, Mon-Fri - after NSE publishes the day's files
+    - cron: "30 16 * * 1-5"   # 22:00 IST retry - final attempt (idempotent: skipped if already done)
+    - cron: "30 4 * * 6"      # 10:00 IST Saturday - weekly review (+ monthly reassessment in days 1-7)
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "What to run"
+        type: choice
+        options: [daily, weekly, monthly, research, seed]
+        default: daily
+      as_of:
+        description: "Session date YYYY-MM-DD (optional, daily only)"
+        required: false
+
+concurrency:
+  group: bql-state          # never two runs on the same state at once
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  TZ: Asia/Kolkata
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install (pinned dependencies)
+        run: pip install -e .
+
+      - name: Restore platform state
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/raw/exchange
+            data/processed
+            state
+            reports
+          key: bql-state-${{ github.run_id }}
+          restore-keys: bql-state-
+
+      - name: Decide task
+        id: task
+        run: |
+          TASK="${{ inputs.task }}"
+          FINAL=false
+          case "${{ github.event.schedule }}" in
+            "45 13 * * 1-5") TASK=daily ;;
+            "30 16 * * 1-5") TASK=daily; FINAL=true ;;
+            "30 4 * * 6")    TASK=weekly ;;
+          esac
+          [ -z "$TASK" ] && TASK=daily
+          echo "task=$TASK" >> "$GITHUB_OUTPUT"
+          echo "final=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "Task: $TASK (final attempt: $FINAL)"
+
+      - name: Initialise workspace
+        run: python main.py init
+
+      - name: Fetch / update official exchange history (resumable; first run seeds ~2h)
+        timeout-minutes: 240
+        run: python main.py fetch-exchange
+
+      - name: Save state after the first (seeding) data fetch
+        if: always() && steps.restore.outputs.cache-matched-key == ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/raw/exchange
+            data/processed
+            state
+            reports
+          key: bql-state-${{ github.run_id }}-fetch
+
+      - name: Research (first run, or requested)
+        if: steps.task.outputs.task == 'research' || hashFiles('reports/research/latest.json') == ''
+        run: python main.py research
+
+      - name: Daily workflow
+        if: steps.task.outputs.task == 'daily'
+        run: |
+          if [ -n "${{ inputs.as_of }}" ]; then
+            python main.py schedule daily --as-of "${{ inputs.as_of }}"
+          else
+            python main.py schedule daily
+          fi
+
+      - name: Weekly review
+        if: steps.task.outputs.task == 'weekly'
+        run: python main.py schedule weekly
+
+      - name: Monthly reassessment (first Saturday, or requested)
+        if: steps.task.outputs.task == 'monthly' || (steps.task.outputs.task == 'weekly' && github.event_name == 'schedule')
+        run: |
+          if [ "${{ steps.task.outputs.task }}" = "monthly" ] || [ "$(date +%d)" -le 7 ]; then
+            python main.py schedule monthly
+          else
+            echo "Not the first week of the month - monthly reassessment skipped."
+          fi
+
+      - name: Run summary and alert check
+        if: always()
+        run: |
+          ARGS=""
+          [ "${{ steps.task.outputs.final }}" = "true" ] && ARGS="--final-attempt"
+          python scripts/automation_report.py $ARGS >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/raw/exchange
+            data/processed
+            state
+            reports
+          key: bql-state-${{ github.run_id }}-final
+
+      - name: Upload reports (no raw exchange data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: ignore
+          path: |
+            reports/paper
+            reports/research/latest.json
+            reports/research/*/summary.csv
+            reports/research/*/*/report.md
+            reports/research/*/*/report.pdf
+            reports/data_quality/*.json
+            state/last_run_status.json
+
+      - name: Open or update alert issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f state/alert.md ] || { echo "No alert."; exit 0; }
+          TITLE="Paper-trading automation needs attention"
+          BODY="$(cat state/alert.md)
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          NUM=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number')
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi
