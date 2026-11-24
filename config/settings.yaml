@@ -97,6 +97,17 @@ paper_trading:
   allowed_statuses: ["Eligible for paper-trading evaluation"]
   # Software-test override. When true, every decision is tagged TEST_MODE in the audit trail.
   test_mode_allow_unvalidated: false
+  # Which strategies drive the model portfolio / daily calls:
+  #   best_evidence - also allow the top `max_strategies` by research SCORE (out-of-sample evidence,
+  #                   robustness, overfitting checks) whose status is at least `min_status`.
+  #                   A Rejected strategy is never used. Re-evaluated by the monthly reassessment.
+  strategy_selection:
+    mode: "best_evidence"
+    max_strategies: 2
+    min_status: "Needs further validation"
+  calls:
+    enabled: true
+    your_capital_inr: 1000000   # only used to convert weights into share quantities in the calls
 
 exchange_data:
   # Official NSE/BSE public archive files (nsearchives.nseindia.com, bseindia.com). Personal research use

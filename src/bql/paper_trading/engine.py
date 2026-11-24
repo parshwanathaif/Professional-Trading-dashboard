@@ -42,6 +42,33 @@ class PaperTradingHalted(RuntimeError):
     pass
 
 
+def select_best_strategies(research_root, sel) -> list[str]:
+    """Strategies chosen by out-of-sample evidence (research score), never by raw past return.
+
+    Only used when `strategy_selection.mode == 'best_evidence'`. A strategy must have at least
+    `min_status`; Rejected strategies are never selected.
+    """
+    import json
+    from pathlib import Path
+
+    from ..validation.research import STATUSES
+
+    if sel.mode != "best_evidence":
+        return []
+    p = Path(research_root) / "latest.json"
+    if not p.exists():
+        return []
+    run_dir = Path(research_root) / json.loads(p.read_text())["run_id"]
+    summ = run_dir / "summary.csv"
+    if not summ.exists():
+        return []
+    df = pd.read_csv(summ)
+    floor = STATUSES.index(sel.min_status)
+    df = df[df["status"].map(lambda s: STATUSES.index(s) if s in STATUSES else -1) >= floor]
+    df = df[df["status"] != "Rejected"].sort_values("score", ascending=False)
+    return list(df["strategy"].head(sel.max_strategies))
+
+
 def freshness_check(panel, t: int, min_coverage: float = 0.9) -> tuple[bool, str]:
     if t <= 0:
         return True, "first session"
@@ -66,13 +93,17 @@ class PaperTrader:
         self.universe_index = universe_index
 
     def _strategy_permissions(self) -> tuple[dict[str, bool], dict[str, str]]:
-        statuses = latest_statuses(self.cfg.path("reports_dir") / "research")
+        root = self.cfg.path("reports_dir") / "research"
+        statuses = latest_statuses(root)
         allowed = {}
         for name, entry in self.cfg.strategies.strategies.items():
             if not entry.enabled:
                 continue
             ok = statuses.get(name) in self.pcfg.allowed_statuses
             allowed[name] = ok or self.pcfg.test_mode_allow_unvalidated
+        for name in select_best_strategies(root, self.pcfg.strategy_selection):
+            if name in allowed:
+                allowed[name] = True
         return allowed, statuses
 
     def run(self, as_of=None, start=None, max_sessions: int | None = None) -> dict:

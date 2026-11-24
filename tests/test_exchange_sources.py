@@ -101,7 +101,6 @@ def test_split_accepted_only_when_prices_confirm():
     prices = pd.DataFrame({"date": d, "symbol": "HDFCBANK", "open": [2250, 2240, 2210, 1100, 1105, 1200],
                            "close": [2244.15, 2211.35, 2187.75, 1101.05, 1199.6, 1257.25]})
     bc = _bc([["HDFCBANK", "EQ", pd.NaT, pd.NaT, pd.Timestamp("2019-09-18"), "FV SPLT FRM RS 2 TO RS 1"],
-              ["HDFCBANK", "EQ", pd.NaT, pd.NaT, pd.Timestamp("2019-09-18"), "BONUS 1:1"],      # would be 2x too
               ["HDFCBANK", "EQ", pd.NaT, pd.NaT, pd.Timestamp("2019-09-17"), "FV SPLT FRM RS 10 TO RS 1"],
               ["HDFCBANK", "EQ", pd.Timestamp("2019-09-20"), pd.NaT, pd.NaT, "DIV-RS 5 PER SH"]])
     out, st = derive_corporate_actions(bc, prices, {}, {})
@@ -110,6 +109,17 @@ def test_split_accepted_only_when_prices_confirm():
     assert st["rejected_no_price_match"] == 1                             # 10:1 'split' has no matching gap
     div = out[out["action_type"] == "dividend"]
     assert div["cash_amount"].iloc[0] == 5 and div["ex_date"].iloc[0] == d[3]   # T+2 era: record - 1 session
+
+
+def test_same_day_bonus_and_split_verified_on_combined_factor():
+    d = pd.bdate_range("2025-06-11", periods=5)
+    prices = pd.DataFrame({"date": d, "symbol": "BAJFINANCE", "open": [9300, 9350, 9400, 940, 945],
+                           "close": [9320, 9380, 9410, 935, 950]})        # x10 gap on 2025-06-16 (Mon)
+    bc = _bc([["BAJFINANCE", "EQ", pd.NaT, pd.NaT, pd.Timestamp("2025-06-16"), "BONUS 4:1"],
+              ["BAJFINANCE", "EQ", pd.NaT, pd.NaT, pd.Timestamp("2025-06-16"), "FV SPLT FRM RS 2 TO RE 1"]])
+    out, st = derive_corporate_actions(bc, prices, {}, {})
+    assert set(out["action_type"]) == {"bonus", "split"} and (out["ex_date"] == d[3]).all()
+    assert st["rejected_no_price_match"] == 0
 
 
 def test_detect_missed_weekend_session():
@@ -199,3 +209,15 @@ def test_liquidity_top_n_universe_is_causal():
     assert np.array_equal(full[:321], cut)
     assert full[200, 9] and not full[200, 0] and full[399, 0]
     assert isinstance(p, Panel)
+
+
+def test_bc_rows_with_unquoted_commas_are_repaired():
+    from bql.data.exchange_sources import _read_bc_text
+
+    t = ("SERIES,SYMBOL,SECURITY,RECORD_DT,BC_STRT_DT,BC_END_DT,EX_DT,ND_STRT_DT,ND_END_DT,PURPOSE\n"
+         "EQ,ABC,ABC Ltd, India,01/02/2020,,,31/01/2020,,,DIV-RS 2\n"
+         "EQ,XYZ,XYZ Ltd,01/02/2020,,,31/01/2020,,,AGM, DIV-RS 3\n")
+    df = _read_bc_text(t)
+    assert list(df["SECURITY"]) == ["ABC Ltd, India", "XYZ Ltd"]
+    assert list(df["EX_DT"]) == ["31/01/2020", "31/01/2020"]
+    assert list(df["PURPOSE"]) == ["DIV-RS 2", "AGM, DIV-RS 3"]

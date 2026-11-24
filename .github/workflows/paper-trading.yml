@@ -110,6 +110,26 @@ jobs:
             python main.py schedule daily
           fi
 
+      - name: Publish BUY / HOLD / SELL calls (GitHub issue -> email/app notification)
+        if: steps.task.outputs.task == 'daily'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STATUS=$(python -c "import json;print(json.load(open('state/last_run_status.json'))['status'])" 2>/dev/null || echo none)
+          if [ "$STATUS" != "COMPLETED" ]; then echo "No new session processed ($STATUS) - no calls published."; exit 0; fi
+          python main.py calls > /tmp/calls.json
+          NEXT=$(python -c "import json;print(json.load(open('/tmp/calls.json'))['next_session'])")
+          TITLE="Trading calls for $NEXT"
+          cat reports/calls/latest.md >> "$GITHUB_STEP_SUMMARY"
+          gh label create trading-calls --color 1f5fa8 --description "Daily BUY/HOLD/SELL calls" 2>/dev/null || true
+          if gh issue list --state all --label trading-calls --search "\"$TITLE\" in:title" --json number --jq '.[0].number' | grep -q .; then
+            echo "Calls for $NEXT already published."; exit 0
+          fi
+          for n in $(gh issue list --state open --label trading-calls --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Superseded by calls for $NEXT." || true
+          done
+          gh issue create --title "$TITLE" --label trading-calls --body-file reports/calls/latest.md
+
       - name: Weekly review
         if: steps.task.outputs.task == 'weekly'
         run: python main.py schedule weekly
@@ -150,6 +170,7 @@ jobs:
           if-no-files-found: ignore
           path: |
             reports/paper
+            reports/calls
             reports/research/latest.json
             reports/research/*/summary.csv
             reports/research/*/*/report.md

@@ -135,11 +135,43 @@ class ValidationCfg(_Strict):
     gates: GatesCfg = GatesCfg()
 
 
+class SelectionCfg(_Strict):
+    # status_only:   only strategies whose status is in allowed_statuses may open positions
+    # best_evidence: additionally the top `max_strategies` by research score whose status is at
+    #                least `min_status` (never a Rejected strategy)
+    mode: str = "status_only"
+    max_strategies: int = Field(2, ge=1, le=6)
+    min_status: str = "Needs further validation"
+
+    @field_validator("mode")
+    @classmethod
+    def _m(cls, v: str) -> str:
+        if v not in {"status_only", "best_evidence"}:
+            raise ValueError("mode must be status_only or best_evidence")
+        return v
+
+    @field_validator("min_status")
+    @classmethod
+    def _s(cls, v: str) -> str:
+        allowed = ["Insufficient evidence", "Needs further validation", "Passed historical validation",
+                   "Eligible for paper-trading evaluation"]
+        if v not in allowed:
+            raise ValueError(f"min_status must be one of {allowed} (a Rejected strategy can never be selected)")
+        return v
+
+
+class CallsCfg(_Strict):
+    enabled: bool = True
+    your_capital_inr: float = Field(1_000_000, gt=0)   # used only to translate weights into quantities
+
+
 class PaperCfg(_Strict):
     portfolio_name: str = "core_paper"
     initial_capital_inr: float = 1e7
     allowed_statuses: list[str] = ["Eligible for paper-trading evaluation"]
     test_mode_allow_unvalidated: bool = False
+    strategy_selection: SelectionCfg = SelectionCfg()
+    calls: CallsCfg = CallsCfg()
 
 
 class SchedulerCfg(_Strict):

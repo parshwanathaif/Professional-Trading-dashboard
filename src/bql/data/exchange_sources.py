@@ -357,14 +357,51 @@ RE_RIGHTS = re.compile(r"RIGHTS?\s*(\d+)\s*:\s*(\d+)\s*@?\s*(PREM\w*|PRM)?\s*(?:
 RE_DIV = re.compile(r"DIV\w*[\s\-:]*(?:RS|RE)\.?\s*-?\s*" + _NUM)
 
 
+_DATE_RE = re.compile(r"^\s*(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})?\s*$")
+
+
+def _read_bc_text(text: str) -> pd.DataFrame:
+    """Read a Bc file robustly: some files contain unquoted commas inside the security name or
+    the purpose text. Over-long rows are repaired by choosing the split whose date columns parse."""
+    import csv
+
+    rows = list(csv.reader(text.splitlines()))
+    if not rows:
+        return pd.DataFrame()
+    header = [h.strip().upper() for h in rows[0]]
+    n = len(header)
+    date_idx = [i for i, h in enumerate(header) if h.endswith("_DT")]
+    out = []
+    for f in rows[1:]:
+        if not f or all(not x.strip() for x in f):
+            continue
+        if len(f) > n:
+            extra = len(f) - n
+            fixed = None
+            for pos in (2, n - 1):           # merge surplus into SECURITY, else into PURPOSE
+                cand = f[:pos] + [",".join(f[pos:pos + extra + 1])] + f[pos + extra + 1:]
+                if all(_DATE_RE.match(cand[i] or "") for i in date_idx):
+                    fixed = cand
+                    break
+            if fixed is None:
+                continue
+            f = fixed
+        elif len(f) < n:
+            f = f + [""] * (n - len(f))
+        out.append(f)
+    return pd.DataFrame(out, columns=header)
+
+
 def parse_bc(path: Path) -> pd.DataFrame:
     """Parse the Bc (book closure / corporate action) file inside an NSE PR archive."""
     with zipfile.ZipFile(path) as zf:
         name = next((n for n in zf.namelist() if n.lower().startswith("bc") and n.lower().endswith(".csv")), None)
         if name is None:
             return pd.DataFrame()
-        raw = pd.read_csv(zf.open(name), dtype=str, encoding_errors="replace")
-    raw.columns = [c.strip().upper() for c in raw.columns]
+        text = zf.read(name).decode("latin-1")
+    raw = _read_bc_text(text)
+    if raw.empty:
+        return pd.DataFrame()
 
     def dt(col):
         v = raw.get(col, pd.Series(index=raw.index, dtype=str)).astype(str).str.strip()
@@ -435,7 +472,7 @@ def derive_corporate_actions(bc: pd.DataFrame, prices: pd.DataFrame, sym_map: di
     px = prices.assign(fsym=prices["symbol"].replace(sym_map)).sort_values(["fsym", "date"])
     by_sym = {s: g.reset_index(drop=True) for s, g in px[["fsym", "date", "open", "close"]].groupby("fsym")}
     sessions = pd.DatetimeIndex(sorted(prices["date"].unique()))
-    rows = []
+    rows, capital = [], []
     for r in bc.itertuples(index=False):
         acts = parse_purpose(r.purpose)
         if not acts:
@@ -461,33 +498,8 @@ def derive_corporate_actions(bc: pd.DataFrame, prices: pd.DataFrame, sym_map: di
             if t in ("split", "bonus", "consolidation"):
                 f = (a["ratio_to"] / a["ratio_from"] if t == "split" else
                      (a["ratio_from"] + a["ratio_to"]) / a["ratio_from"] if t == "bonus" else a["adjustment_factor"])
-                logf = abs(np.log(f))
-                if logf < 0.25:
-                    # small factor (<~28%): ordinary daily moves are of similar size, so the gap cannot
-                    # identify the date - use the published/estimated ex-date without snapping
-                    if k >= len(g) or g["date"].iloc[k] != ex:
-                        stats["rejected_no_price_match"] += 1
-                        continue
-                    best, best_err, how = k, 0.0, "published ex-date (factor too small to price-verify)"
-                else:
-                    best, best_err = None, np.inf
-                    for j in range(max(1, k - 3), min(len(g), k + 4)):
-                        gap = g["close"].iloc[j - 1] / g["open"].iloc[j]
-                        if gap > 0 and np.isfinite(gap):
-                            err = abs(np.log(gap / f))
-                            if err < best_err:
-                                best, best_err = j, err
-                    if best is None or best_err > min(tolerance, 0.5 * logf):
-                        stats["rejected_no_price_match"] += 1
-                        continue
-                    how = f"price-verified (log err {best_err:.3f})"
-                row = {**base, "ex_date": g["date"].iloc[best], "action_type": t, "notes": base["notes"] + f" | {how}"}
-                if t == "consolidation":
-                    row.update(action_type="consolidation", adjustment_factor=f)
-                else:
-                    row.update(ratio_from=a["ratio_from"], ratio_to=a["ratio_to"])
-                rows.append(row)
-                stats["verified"] += 1
+                capital.append({"sym": sym, "ex": ex, "k": k, "type": t, "f": f, "a": a, "notes": base["notes"]})
+                continue
             elif t == "rights" and k < len(g):
                 price = a["rights_amount"] + (face_values.get(sym, 0.0) if a["rights_premium_only"] else 0.0)
                 rows.append({**base, "ex_date": g["date"].iloc[k], "action_type": "rights",
@@ -499,6 +511,44 @@ def derive_corporate_actions(bc: pd.DataFrame, prices: pd.DataFrame, sym_map: di
                 if 1.02 < f < 10:
                     rows.append({**base, "ex_date": g["date"].iloc[k], "action_type": "demerger",
                                  "adjustment_factor": f, "notes": base["notes"] + " | factor price-implied (approx.)"})
+    # ---- capital actions: verify the COMBINED factor of all actions on the same symbol/ex-date
+    # (e.g. bonus 4:1 + split 2->1 on the same day = x10 price gap)
+    if capital:
+        cdf = pd.DataFrame(capital)
+        cdf["key"] = [f"{t}|{a.get('ratio_from')}|{a.get('ratio_to')}|{a.get('adjustment_factor')}"
+                      for t, a in zip(cdf["type"], cdf["a"])]
+        cdf = cdf.drop_duplicates(["sym", "ex", "key"])
+        for (sym, ex), grp in cdf.groupby(["sym", "ex"], sort=False):
+            g = by_sym[sym]
+            k = int(grp["k"].iloc[0])
+            f = float(np.prod(grp["f"]))
+            logf = abs(np.log(f))
+            if logf < 0.25:
+                if k >= len(g) or g["date"].iloc[k] != ex:
+                    stats["rejected_no_price_match"] += len(grp)
+                    continue
+                best, how = k, "published ex-date (factor too small to price-verify)"
+            else:
+                best, best_err = None, np.inf
+                for j in range(max(1, k - 3), min(len(g), k + 4)):
+                    gap = g["close"].iloc[j - 1] / g["open"].iloc[j]
+                    if gap > 0 and np.isfinite(gap):
+                        err = abs(np.log(gap / f))
+                        if err < best_err:
+                            best, best_err = j, err
+                if best is None or best_err > min(tolerance, 0.5 * logf):
+                    stats["rejected_no_price_match"] += len(grp)
+                    continue
+                how = f"price-verified (combined factor {f:.3f}, log err {best_err:.3f})"
+            for c in grp.itertuples(index=False):
+                row = {"symbol": sym, "ex_date": g["date"].iloc[best], "action_type": c.type,
+                       "notes": f"{c.notes} | {how}"}
+                if c.type == "consolidation":
+                    row["adjustment_factor"] = c.f
+                else:
+                    row.update(ratio_from=c.a["ratio_from"], ratio_to=c.a["ratio_to"])
+                rows.append(row)
+                stats["verified"] += 1
     out = pd.DataFrame(rows)
     if out.empty:
         return out, stats

@@ -138,6 +138,19 @@ def cmd_paper(args):
         _print(pt.reset_strategy(args.strategy, args.operator, args.note))
 
 
+def cmd_calls(args):
+    """Write tonight's BUY / HOLD / SELL calls from the model portfolio."""
+    from bql.calls import write_calls
+    from bql.paper_trading import PaperTrader
+
+    cfg = _cfg(args)
+    allowed, _ = PaperTrader(cfg)._strategy_permissions()
+    out = write_calls(cfg, allowed)
+    _print(out)
+    if args.print:
+        print(Path(out["latest"]).read_text())
+
+
 def cmd_report(args):
     from bql.data import MarketStore
     from bql.paper_trading import PaperLedger
@@ -285,6 +298,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--note")
     s.add_argument("--strategy")
     s.set_defaults(fn=cmd_paper)
+    s = sub.add_parser("calls", help="write BUY/HOLD/SELL calls for the next session")
+    s.add_argument("--print", action="store_true")
+    s.set_defaults(fn=cmd_calls)
     s = sub.add_parser("report")
     s.add_argument("--period", choices=["daily", "weekly", "monthly", "annual"], default="daily")
     s.add_argument("--as-of")
