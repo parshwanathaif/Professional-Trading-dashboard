@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bharat-quant-lab"
+version = "0.1.0"
+description = "Indian equity quantitative research and PAPER-TRADING platform (research/education only; no live order placement)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary - research use only" }
+# Versions pinned to the exact releases this platform was built and tested with.
+dependencies = [
+    "numpy==2.5.3",
+    "pandas==3.0.5",
+    "pyarrow==26.0.1",
+    "duckdb==2.0.1",
+    "pydantic==2.13.5",
+    "PyYAML==6.0.3",
+    "scipy==1.18.1",
+    "plotly==7.1.0",
+    "matplotlib==3.11.2",
+    "streamlit==1.67.0",
+    "openpyxl==3.1.5",
+    "reportlab==5.0.1",
+    "markdown-it-py==4.3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "ruff==0.17.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["src", "tests", "dashboard"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY"]
+ignore = ["E501", "B905"]

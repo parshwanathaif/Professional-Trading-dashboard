@@ -1,0 +1,18 @@
+# secrets
+.env
+*.key
+# runtime data & state (may contain licensed data)
+data/raw/
+data/processed/
+data/synthetic/
+state/
+logs/
+reports/
+demo_workspace/
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

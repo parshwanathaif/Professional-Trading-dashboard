@@ -1,0 +1,117 @@
+# Bharat Quant Lab - global settings
+# Every run records a SHA-256 hash of the resolved configuration (configuration versioning).
+# This platform is for research, historical simulation and PAPER TRADING only.
+# There is no broker connectivity and no code path that can place a real order.
+
+project:
+  name: "Bharat Quant Lab"
+  timezone: "Asia/Kolkata"
+  mode: "offline_csv"          # offline_csv | provider (authorised provider plug-in, configured locally)
+
+paths:
+  market_db: "data/processed/market.duckdb"
+  paper_db: "state/paper_trading.sqlite"
+  raw_dir: "data/raw"
+  benchmarks_dir: "data/benchmarks"
+  corporate_actions_dir: "data/corporate_actions"
+  reference_dir: "data/reference"
+  reports_dir: "reports"
+  logs_dir: "logs"
+  state_dir: "state"
+
+data:
+  # Outlier screen: daily close-to-close moves larger than this (after corporate-action
+  # adjustment) are flagged for review. Not removed, not filled.
+  max_abs_daily_return_flag: 0.25
+  # A symbol is excluded from a research run if its missing-bar ratio inside its listed
+  # life exceeds this value.
+  max_missing_ratio: 0.05
+  # Data quality gate: dataset-level CRITICAL issues always block a run. Symbol-level CRITICAL
+  # issues exclude that symbol (true) or block the whole run (false).
+  exclude_symbols_with_critical_issues: true
+  # Universe liquidity floor (median 20-day traded value in INR, from data known at t).
+  min_median_traded_value_inr: 50000000     # INR 5 crore / day
+  min_price_inr: 20.0
+  min_history_days: 252
+  default_benchmark: "NIFTY50"
+  # Universe definition:
+  #   liquidity_top_n  - each day, the top N stocks by trailing median traded value, computed only from
+  #                      data available that day. With complete exchange bhavcopy history (includes
+  #                      later-delisted stocks) this is a survivorship-safe point-in-time universe.
+  #   index_membership - point-in-time membership of `universe_index` from the index_membership table.
+  universe_mode: "liquidity_top_n"
+  universe_top_n: 300
+  universe_rank_window: 126
+  universe_index: null
+  # Load only symbols whose 20d median traded value EVER reached the floor (cannot change results).
+  prefilter_liquid_symbols: true
+  # A single invalid bar is excluded on its own (treated as no trade) rather than dropping the stock.
+  critical_row_policy: "exclude_rows"
+  # Exchange bhavcopies list every traded security: a missing session = no trades (suspension).
+  gaps_are_non_trading: true
+  max_gap_bars: 20
+
+backtest:
+  initial_capital_inr: 10000000             # INR 1 crore simulated
+  execution_delay_bars: 1                   # signal at close t -> fill at open t+delay
+  fill_price: "open"                        # open | close (of the execution bar)
+  max_participation_of_volume: 0.05         # max fraction of the execution bar's volume
+  delisting_haircut: 0.30                   # value lost on positions in securities that stop trading
+  stale_price_mark_days: 5                  # mark-to-market using last price for at most N missing days
+  benchmark: "NIFTY50"
+  risk_free_rate_annual: 0.065              # used for Sharpe/Sortino excess returns (approx. Indian T-bill)
+  random_seed: 20240601
+
+validation:
+  train_fraction: 0.60
+  validation_fraction: 0.20                 # remainder is the untouched final test period
+  walk_forward:
+    train_years: 4
+    test_years: 1
+    step_years: 1
+  min_trades_for_evidence: 30
+  bootstrap_samples: 1000
+  bootstrap_block_days: 20
+  monte_carlo_paths: 1000
+  pbo_partitions: 10
+  cost_stress_multipliers: [1.0, 2.0, 3.0]
+  slippage_stress_multipliers: [1.0, 2.0, 4.0]
+  delay_stress_bars: [1, 2, 3]
+  missing_data_drop_fraction: 0.02
+  liquidity_stress_participation: 0.01
+  gap_stress_bps: 150
+  gates:
+    min_oos_sharpe: 0.30
+    min_dsr: 0.90                     # Deflated Sharpe Ratio probability
+    max_pbo: 0.50
+    max_oos_drawdown: 0.35
+    min_cost_stress_sharpe: 0.0       # Sharpe at 2x costs must stay above this
+    min_positive_wf_fold_fraction: 0.5
+    min_param_neighbourhood_positive: 0.6
+    eligible_min_dsr: 0.95
+
+paper_trading:
+  portfolio_name: "core_paper"
+  initial_capital_inr: 10000000
+  # Only strategies whose latest research status is in this list may open new paper positions.
+  allowed_statuses: ["Eligible for paper-trading evaluation"]
+  # Software-test override. When true, every decision is tagged TEST_MODE in the audit trail.
+  test_mode_allow_unvalidated: false
+
+exchange_data:
+  # Official NSE/BSE public archive files (nsearchives.nseindia.com, bseindia.com). Personal research use
+  # under the exchanges' website terms; no login, no bot-protection circumvention, rate-limited.
+  enabled: true
+  start_date: "2013-01-01"          # NSE daily index files are available from 2013
+  nse_series: ["EQ", "BE", "BZ"]    # rolling + trade-for-trade equity series (SME excluded)
+  bse_start_date: "2024-01-01"      # BSE bhavcopy used for an independent NSE/BSE price cross-check
+  min_request_interval_sec: 0.35    # politeness floor (cannot be set below 0.25)
+  auto_fetch_in_daily_workflow: true
+  cache_dir: "data/raw/exchange"
+  build_dir: "data/processed/exchange_build"
+
+scheduler:
+  market_close_ist: "15:30"
+  daily_run_after_ist: "18:30"       # after exchange bhavcopy/EOD data are normally available
+  lock_stale_after_minutes: 180
+  max_retries: 2

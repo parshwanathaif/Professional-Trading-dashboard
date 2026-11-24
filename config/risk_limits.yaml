@@ -1,0 +1,39 @@
+# Independent risk-management limits. Strategies cannot override these.
+# All values are fractions of current portfolio equity unless stated.
+
+position:
+  risk_per_position: 0.0075          # capital at risk to the stop per position (0.75%)
+  max_position_weight: 0.08          # max 8% of equity in one stock at entry
+  max_open_positions: 20
+  atr_stop_multiple: 2.5             # default stop distance = k * ATR(20)
+  max_holding_days: 250              # time stop (safety net)
+  min_position_value_inr: 25000
+
+portfolio:
+  max_gross_exposure: 1.00           # long-only, no leverage: never above 100%
+  max_sector_exposure: 0.25
+  max_avg_pairwise_correlation: 0.75 # candidate vs current holdings, 120d returns
+  correlation_lookback_days: 120
+  volatility_target_annual: 0.15     # scale exposure cap down when realised vol is higher
+  volatility_lookback_days: 63
+  min_cash_buffer: 0.02
+
+liquidity:
+  max_adv_participation_at_sizing: 0.02  # position <= 2% of 20d median traded value
+
+loss_limits:
+  max_daily_loss: 0.03               # breach -> no new entries next session (soft, auto-clears)
+  max_weekly_loss: 0.06              # breach -> no new entries for rest of ISO week (soft)
+  max_drawdown_warning: 0.10
+  max_drawdown_kill: 0.20            # HARD: kill switch, manual reset required
+  max_consecutive_losses: 8          # per strategy -> strategy suspended (manual reset)
+
+gap_risk:
+  overnight_gap_alert: 0.08          # flag positions gapping more than 8% against us
+
+market_stress:
+  block_entries_in_regimes: ["MARKET_STRESS"]
+  exposure_cap_in_regimes:
+    STRONG_BEARISH: 0.50
+    HIGH_VOLATILITY: 0.70
+    MARKET_STRESS: 0.30

@@ -1,0 +1,76 @@
+# Strategy research configuration.
+# `params` are defaults; `grid` is the search space used ONLY on training windows.
+# The final test period is never used for parameter selection.
+
+strategies:
+  trend_ma:
+    enabled: true
+    family: "Trend Following"
+    params: {fast: 50, slow: 200, atr_window: 20}
+    grid:
+      fast: [20, 50, 100]
+      slow: [150, 200, 250]
+
+  xs_momentum:
+    enabled: true
+    family: "Momentum"
+    params: {lookback: 252, skip: 21, top_n: 10, rebalance_days: 21, vol_adjust: true, exit_rank_buffer: 2.0}
+    grid:
+      lookback: [126, 189, 252]
+      top_n: [5, 10, 15]
+
+  rsi_mean_reversion:
+    enabled: true
+    family: "Mean Reversion"
+    params: {rsi_window: 3, entry_rsi: 10, exit_rsi: 60, trend_window: 200, max_hold: 10}
+    grid:
+      rsi_window: [2, 3, 5]
+      entry_rsi: [5, 10, 20]
+
+  bollinger_reversion:
+    enabled: true
+    family: "Mean Reversion"
+    params: {window: 20, num_std: 2.0, trend_window: 200, max_hold: 15}
+    grid:
+      window: [10, 20, 30]
+      num_std: [1.5, 2.0, 2.5]
+
+  donchian_breakout:
+    enabled: true
+    family: "Breakout"
+    params: {entry_window: 55, exit_window: 20, volume_mult: 1.5, volume_window: 50, squeeze_pct: 1.0}
+    grid:
+      entry_window: [20, 55, 100]
+      volume_mult: [1.0, 1.5, 2.0]
+
+  vol_breakout:
+    enabled: true
+    family: "Volatility"
+    params: {atr_window: 14, squeeze_window: 120, squeeze_pct: 0.25, trend_window: 100, exit_window: 20}
+    grid:
+      squeeze_pct: [0.15, 0.25, 0.35]
+      trend_window: [50, 100, 200]
+
+regime:
+  benchmark: "NIFTY50"
+  trend_window: 200
+  slope_window: 50
+  vol_window: 21
+  vol_high_pct: 0.80       # expanding percentile of realised vol (no look-ahead)
+  vol_low_pct: 0.20
+  stress_drawdown: 0.15    # benchmark drawdown from 252d high
+  min_history: 252
+
+# Regime gating per strategy (applies to NEW entries only).
+regime_gating:
+  trend_ma: {block: ["STRONG_BEARISH", "MARKET_STRESS"]}
+  xs_momentum: {block: ["MARKET_STRESS"]}
+  rsi_mean_reversion: {block: ["MARKET_STRESS"]}
+  bollinger_reversion: {block: ["MARKET_STRESS"]}
+  donchian_breakout: {block: ["STRONG_BEARISH", "MARKET_STRESS"]}
+  vol_breakout: {block: ["MARKET_STRESS"]}
+
+portfolio_construction:
+  method: "inverse_volatility"    # equal | inverse_volatility | risk_parity
+  lookback_days: 126
+  max_strategy_weight: 0.40

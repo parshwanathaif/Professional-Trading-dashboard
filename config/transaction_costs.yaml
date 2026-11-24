@@ -1,0 +1,116 @@
+# Date-effective transaction cost schedule for Indian cash equities (delivery).
+# Each schedule entry applies from `effective_from` until the next entry's effective date.
+# Rates are FRACTIONS of traded value unless stated otherwise (0.001 = 0.1%).
+#
+# IMPORTANT: Statutory and exchange charges change. Every entry carries `source` and
+# `verification` fields. Entries marked `verify` were not confirmed from a primary
+# source during the last review and must be checked before relying on results.
+# Last reviewed: 2026-11-23 (see docs/REGULATORY_REFERENCE.md).
+
+currency: INR
+product: delivery            # the platform simulates delivery-based cash equity only
+
+# Brokerage is broker-specific. Default is deliberately conservative (percentage, no cap).
+brokerage:
+  - effective_from: "2000-01-01"
+    pct: 0.0003               # 0.03% per side
+    min_per_order: 0.0
+    max_per_order: null       # null = no cap (conservative)
+    source: "Assumption - configure for your broker"
+    verification: "assumption"
+
+stt:                          # Securities Transaction Tax, delivery equity
+  - effective_from: "2004-10-01"
+    buy_pct: 0.00125
+    sell_pct: 0.00125
+    source: "Finance (No.2) Act 2004 (as amended); rate prior to Finance Act 2013 revision"
+    verification: "verify"
+  - effective_from: "2013-06-01"
+    buy_pct: 0.001
+    sell_pct: 0.001
+    source: "Finance Act 2013; reconfirmed unchanged by NSE circular 31-Mar-2026 (STT rate changes, delivery 'No Change')"
+    verification: "secondary-confirmed"
+
+exchange_txn:                 # Exchange transaction charges (both sides), by exchange
+  NSE:
+    - effective_from: "2000-01-01"
+      pct: 0.0000345
+      source: "Historical approximation"
+      verification: "verify"
+    - effective_from: "2024-10-01"
+      pct: 0.0000297          # INR 297 per crore (SEBI uniform-charges circular, NSE revision Oct-2024)
+      source: "NSE revision effective 01-Oct-2024 (Outlook Business / Business Standard reports)"
+      verification: "secondary-confirmed"
+    - effective_from: "2026-03-01"
+      pct: 0.00003069         # IPFT cut to INR 0.01/cr, txn charge raised so total ~INR 307/cr
+      source: "NSE circular 27-Feb-2026 'Revision in transaction charges' (FA73061)"
+      verification: "secondary-confirmed"
+  BSE:
+    - effective_from: "2000-01-01"
+      pct: 0.0000375
+      source: "Approximation for A/B group scrips"
+      verification: "verify"
+
+ipft:                         # Investor Protection Fund Trust contribution (NSE)
+  NSE:
+    - effective_from: "2000-01-01"
+      pct: 0.000001           # INR 10 per crore
+      source: "NSE charges schedule"
+      verification: "verify"
+    - effective_from: "2026-03-01"
+      pct: 0.000000001        # INR 0.01 per crore
+      source: "NSE circular 27-Feb-2026 (FA73061)"
+      verification: "secondary-confirmed"
+  BSE:
+    - effective_from: "2000-01-01"
+      pct: 0.000001
+      source: "Assumption"
+      verification: "verify"
+
+sebi_turnover_fee:
+  - effective_from: "2000-01-01"
+    pct: 0.0000015            # INR 15 per crore (historical)
+    source: "Historical approximation"
+    verification: "verify"
+  - effective_from: "2020-06-01"
+    pct: 0.000001             # INR 10 per crore
+    source: "NSE investor page: SEBI turnover fees, STT & other levies"
+    verification: "primary"
+
+stamp_duty:                   # buyer only, delivery
+  - effective_from: "2000-01-01"
+    buy_pct: 0.00015          # pre-2020 rates varied by state; uniform 0.015% used as approximation
+    source: "Approximation (state-wise rates applied before 01-Jul-2020)"
+    verification: "assumption"
+  - effective_from: "2020-07-01"
+    buy_pct: 0.00015
+    source: "Indian Stamp Act 1899 as amended by Finance Act 2019; NSE investor page (0.015% buyer, delivery)"
+    verification: "primary"
+
+gst:                          # on brokerage + exchange txn + SEBI fee + IPFT
+  - effective_from: "2000-01-01"
+    rate: 0.15                # service tax era approximation
+    source: "Service tax (14% + SBC + KKC) approximation"
+    verification: "verify"
+  - effective_from: "2017-07-01"
+    rate: 0.18
+    source: "CGST/SGST/IGST Acts 2017"
+    verification: "primary"
+
+dp_charges:                   # depository charge per scrip per sell day (flat INR)
+  - effective_from: "2000-01-01"
+    inr_per_sell: 15.93
+    source: "Typical discount-broker DP charge incl. GST - configure for your broker"
+    verification: "assumption"
+
+# Execution-cost models (not statutory). All in basis points unless stated.
+execution:
+  # Half bid-ask spread by liquidity bucket (median 20d traded value, INR crore, known at t)
+  half_spread_bps_by_adv_crore:
+    - {min_adv_crore: 100, bps: 2.0}
+    - {min_adv_crore: 20,  bps: 5.0}
+    - {min_adv_crore: 5,   bps: 10.0}
+    - {min_adv_crore: 0,   bps: 25.0}
+  base_slippage_bps: 5.0
+  # Square-root market impact: impact = coef * daily_vol * sqrt(participation)
+  impact_coefficient: 1.0
