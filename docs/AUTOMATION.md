@@ -19,6 +19,25 @@ Actions → *Automated paper trading* → **Run workflow**, then choose a task:
 - `research`
 - `seed`: download the full history only. This is needed once; it takes about two hours.
 
+## Daily trading calls (BUY / HOLD / SELL)
+After each daily run that processes a new session, the workflow publishes **"Trading calls for <next session>"** as a GitHub issue labelled `trading-calls`. As the repository owner you are notified by email and in the GitHub mobile app; to make sure, set *Watch → All activity* on the repository. The previous day's calls issue is closed automatically.
+
+Each issue contains:
+- **BUY.** Stock, suggested weight (% of capital), quantity for the capital in `paper_trading.calls.your_capital_inr`, last close, **stop-loss** price and %, the strategy and the reason. Buy at the next open and place the stop-loss immediately.
+- **SELL.** Stock, entry, last close, P&L and the exit reason (signal exit, time stop). Sell at the next open.
+- **Already exited today.** Positions whose stop-loss was hit during the session.
+- **HOLD.** Open positions with their current stop-loss, P&L and weight.
+- **Live track record.** Return, drawdown, hit rate and average result of all closed calls since the model portfolio started, after all simulated costs.
+- **Strategies selected and their out-of-sample evidence.**
+
+### How the strategy is chosen
+`paper_trading.strategy_selection.mode: best_evidence` selects the top `max_strategies` (default 2) by the research **score**. The score combines out-of-sample and walk-forward results, drawdown, consistency, cost sensitivity, parameter stability, regime robustness, liquidity and the Deflated Sharpe Ratio. Only strategies whose status is at least `min_status` (default "Needs further validation") qualify, and **a Rejected strategy is never used.** The monthly reassessment recomputes this automatically.
+
+If no strategy qualifies, the issue says so and contains **no BUY calls**. Open positions keep being managed with HOLD and SELL calls.
+
+### Mirroring the calls with a broker
+The calls assume entry at the next session's open and a protective stop-loss kept at the broker. Your fills will differ from the model's simulated fills. The model portfolio's track record is the reference.
+
 ## Where state lives
 - The **Actions cache** holds `data/raw/exchange`, `data/processed`, `state` and `reports`. Only workflows of this repository can read it, so exchange data are never committed or published. The latest cache is restored at the start of each run and a new one is saved at the end.
 - If the cache is ever evicted (GitHub evicts caches unused for 7 days, and the total limit is 10 GB), the next run re-downloads the history and resumes automatically. **The paper ledger would restart in that case.** Download the `reports-<run>` artifact regularly if you need a permanent record.

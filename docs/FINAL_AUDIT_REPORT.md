@@ -2,7 +2,25 @@
 
 **Date:** 2026-11-23 (IST) · **Version:** 0.1.0 · **Scope:** Phases 1–10
 
-> **Headline.** The platform is complete and works end to end in offline mode. **No real market data is connected, so no strategy has been validated on Indian market data.** All results below come from synthetic software-test data with no embedded edge. On that data **all six strategies were rejected**, which is what a sound validation framework should do with noise.
+> **Headline (updated 2026-11-24).** The platform now runs on **official NSE data from 2013-01-01 to 2026-11-23**: 6.29M stock-days, 17,513 corporate actions, a survivorship-safe point-in-time universe, a data-quality gate that passes, and an NSE vs BSE cross-check with a 0.12% median difference. **On this real history, strict validation rejected all six strategies** (section 5a). The strongest, 50/250-day trend following, failed only the backtest-overfitting (PBO) gate. In line with the rules, no BUY calls are issued until a strategy passes or the owner explicitly decides otherwise. The synthetic-data results in sections 5–6 are kept for reference.
+
+## 5a. Validation outcome on REAL NSE data (2013–2026)
+Universe: each day, the top 300 stocks by trailing 126-day median traded value (survivorship-safe, point-in-time). Train 2014-03 → 2021-12, validation → 2024-06, **untouched test 2024-06-04 → 2026-11-23**. Benchmark: NIFTY 50 price index, test CAGR 6.2%. Sharpe ratios are in excess of 6.5% risk-free.
+
+| Strategy | Status | Score | WF OOS Sharpe | WF OOS CAGR | Test CAGR net (gross) | Test max DD | 2× cost Sharpe | PBO | Failed critical gates |
+|---|---|---|---|---|---|---|---|---|---|
+| trend_ma (50/250) | Rejected | 66.4 | **0.89** | **22.3%** | **12.5%** (13.6%) | −26.7% | 1.03 | 0.78 | PBO only |
+| xs_momentum | Rejected | 49.5 | −0.21 | 2.3% | 13.9% (15.3%) | −28.3% | 0.41 | 0.88 | WF OOS ≤ 0; PBO |
+| vol_breakout | Rejected | 42.4 | −0.47 | −1.3% | 8.6% (11.1%) | −23.8% | 0.30 | 0.72 | WF OOS ≤ 0; PBO |
+| donchian_breakout | Rejected | 36.4 | −0.09 | 3.8% | −7.3% (−4.3%) | −31.2% | 0.12 | 0.33 | WF OOS ≤ 0; test ≤ 0 |
+| rsi_mean_reversion | Rejected | 20.6 | −0.81 | 0.1% | −2.1% (1.0%) | −13.8% | −0.53 | 0.01 | WF, test, costs |
+| bollinger_reversion | Rejected | 15.3 | −0.60 | −0.5% | −9.6% (−4.1%) | −31.8% | −0.94 | 0.08 | WF, test, costs |
+
+Observations:
+- Short-term mean reversion does not survive Indian delivery costs (STT on both sides). Gross results are already weak and net results are negative.
+- Trend following is the only family with positive walk-forward out-of-sample results. It is also positive in the untouched test and robust to doubled costs, and 100% of its parameter grid was positive in training. It failed PBO: with every parameter variant similar, picking the in-sample best adds nothing. The Deflated Sharpe Ratio is only 5%, so statistical confidence is low. It loses in bearish and stress regimes, and its win rate is about 15% (a few large winners).
+- A proposed rule change that would waive PBO when all fixed-parameter variants are profitable out of sample was **not applied**. It would have been a gate change made after seeing the results; the decision is left to the owner.
+- Momentum and volatility breakout looked good in the 2024–26 test window but were negative across the walk-forward folds. This is the same single-window trap seen in the synthetic audit.
 
 ## 1. What has been built
 | Component | Location | Status |
@@ -57,7 +75,8 @@
 ## 3. Data sources connected
 | Source | Status |
 |---|---|
-| Licensed NSE/BSE EOD data | **None connected.** Offline CSV/Parquet import is ready. |
+| Official NSE public archives (bhavcopy, index closes, book closures) | **Connected.** 2013-01-01 → today, updated daily by the GitHub Actions workflow. Personal research use, no redistribution. |
+| Official BSE bhavcopy | **Connected** (2024 onward) for the NSE vs BSE cross-check |
 | Licensed vendor API | Template only (`AuthorisedVendorProvider`) |
 | Synthetic generator | Used for software testing only. Flagged in provenance, file names, reports and the dashboard banner. |
 

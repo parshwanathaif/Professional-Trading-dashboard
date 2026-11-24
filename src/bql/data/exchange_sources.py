@@ -664,8 +664,10 @@ def build_datasets(cache_dir: Path, out_dir: Path, series_keep=("EQ", "BE", "BZ"
     for d in weekend_sessions:
         hol.append({"date": d, "exchange": "NSE", "description": "special session (weekend trading session)",
                     "source": "nsearchives.nseindia.com bhavcopy published for this date", "verified": True})
-    hol.append({"date": date(2026, 12, 25), "exchange": "NSE", "description": "Christmas (2026 holiday list)",
-                "source": "NSE 2026 trading-holiday circular (secondary source) - verify", "verified": False})
+    for d, desc in ((date(2026, 11, 24), "Diwali Balipratipada (2026 holiday list)"),
+                    (date(2026, 12, 25), "Christmas (2026 holiday list)")):
+        hol.append({"date": d, "exchange": "NSE", "description": desc,
+                    "source": "NSE 2026 trading-holiday circular (secondary source) - verify", "verified": False})
     holidays = pd.DataFrame(hol).drop_duplicates(["date", "exchange"])
 
     # ---------------- securities master
