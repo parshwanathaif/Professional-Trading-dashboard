@@ -35,6 +35,9 @@ Each issue contains:
 
 If no strategy qualifies, the issue says so and contains **no BUY calls**. Open positions keep being managed with HOLD and SELL calls.
 
+### Shadow book (owner decision, 2026-11-24)
+No strategy has yet **passed** historical validation on real NSE data, so the main (real-use) book requires "Passed historical validation" (`strategy_selection.min_status`) and currently issues no BUY calls. The owner chose **"shadow calls first"**: a separate portfolio (`paper_trading.shadow`, book `shadow_trend`) follows the highest research-score strategy that passed the look-ahead test, currently 50/250 trend following ("Needs further validation"). Its calls appear in the same daily issue under **SHADOW calls - TRACK ONLY**, with the shadow book's own live record. Every shadow decision is tagged `test_mode=1` in the audit trail. Decide on real-money use only after that live record supports it. Set `shadow.enabled: false` to stop it.
+
 ### Mirroring the calls with a broker
 The calls assume entry at the next session's open and a protective stop-loss kept at the broker. Your fills will differ from the model's simulated fills. The model portfolio's track record is the reference.
 
