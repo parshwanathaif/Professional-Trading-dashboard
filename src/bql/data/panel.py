@@ -112,6 +112,8 @@ def build_panel(
     security, including later-delisted ones), so a causally-ranked liquidity universe is survivorship-safe."""
     if benchmark is None or benchmark.empty:
         raise ValueError("benchmark series is required to build a panel")
+    if prices is None or prices.empty:
+        raise ValueError("no price data left after universe filters (check data.equity_isin_prefixes / imports)")
     prices = prices.copy()
     if exclude_symbols:
         prices = prices[~prices["symbol"].isin(exclude_symbols)]

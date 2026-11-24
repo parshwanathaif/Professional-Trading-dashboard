@@ -58,6 +58,8 @@ def _make_workspace(base: Path, n_symbols: int = 24, start: str = "2015-01-01", 
     s["data"]["gaps_are_non_trading"] = False
     s["data"]["critical_row_policy"] = "exclude_symbol"
     s["exchange_data"]["enabled"] = False
+    s["data"]["equity_isin_prefixes"] = None          # synthetic ISINs are INSYN...
+    s["paper_trading"]["shadow"]["enabled"] = False
     s["data"]["min_median_traded_value_inr"] = 1e6
     s["paper_trading"]["portfolio_name"] = "test_paper"
     s["validation"]["walk_forward"] = {"train_years": 2, "test_years": 1, "step_years": 1}

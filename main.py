@@ -208,6 +208,8 @@ def cmd_demo(args):
     s["data"]["gaps_are_non_trading"] = False
     s["data"]["critical_row_policy"] = "exclude_symbol"
     s["exchange_data"]["enabled"] = False                       # demo never touches the network
+    s["data"]["equity_isin_prefixes"] = None                    # synthetic ISINs are INSYN...
+    s["paper_trading"]["shadow"]["enabled"] = False
     s["paper_trading"]["portfolio_name"] = "demo_paper"
     s["paper_trading"]["test_mode_allow_unvalidated"] = True   # SOFTWARE TEST ONLY - tagged in audit trail
     (ws / "config" / "settings.yaml").write_text("# DEMO WORKSPACE - SYNTHETIC DATA - SOFTWARE TEST ONLY\n"
