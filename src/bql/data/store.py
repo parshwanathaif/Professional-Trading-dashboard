@@ -227,6 +227,27 @@ class MarketStore:
         with self.connect() as con:
             return [r[0] for r in con.execute(sql, [exchange, float(min_value_inr)]).fetchall()]
 
+    def equity_symbols(self, isin_prefixes: list[str], exchange: str = "NSE") -> set[str] | None:
+        """Symbols that are company shares by ISIN prefix (INE...). ETFs / mutual-fund units (INF...) and
+        partly-paid shares (IN9...) are not. Returns None when the securities master has no ISINs."""
+        with self.connect() as con:
+            rows = con.execute("SELECT symbol, isin FROM securities WHERE exchange = ?", [exchange]).fetchall()
+            changes = con.execute("SELECT symbol, new_symbol FROM corporate_actions WHERE exchange = ? AND "
+                                  "action_type = 'symbol_change' AND new_symbol IS NOT NULL", [exchange]).fetchall()
+        if not rows or all(r[1] is None for r in rows):
+            return None
+        keep = {sym for sym, isin in rows if isin and any(str(isin).startswith(p) for p in isin_prefixes)}
+        # price history uses the symbol traded at the time: include old symbols of kept securities
+        mapping = dict(changes)
+        for old in mapping:
+            cur, seen = old, set()
+            while cur in mapping and cur not in seen:
+                seen.add(cur)
+                cur = mapping[cur]
+            if cur in keep:
+                keep.add(old)
+        return keep
+
     def source_names(self, dataset: str) -> list[str]:
         with self.connect() as con:
             return [r[0] for r in con.execute("SELECT DISTINCT source_name FROM provenance WHERE dataset = ?",

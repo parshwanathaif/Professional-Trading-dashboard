@@ -197,6 +197,10 @@ def load_panel_from_store(store, cfg, exclude_symbols: list[str] | None = None,
     bm_name = cfg.settings.backtest.benchmark
     universe_index = universe_index or (d.universe_index if d.universe_mode == "index_membership" else None)
     symbols = store.liquid_symbols(d.min_median_traded_value_inr) if d.prefilter_liquid_symbols else None
+    if d.equity_isin_prefixes:
+        eq = store.equity_symbols(d.equity_isin_prefixes)
+        if eq is not None:
+            symbols = sorted(eq if symbols is None else set(symbols) & eq)
     prices = store.prices(exchange="NSE", symbols=symbols)
     bench = store.benchmark(bm_name)
     from .exchange_sources import NSE_SOURCE

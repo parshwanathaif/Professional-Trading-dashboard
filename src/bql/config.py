@@ -69,6 +69,7 @@ class DataCfg(_Strict):
     universe_top_n: int | None = None
     universe_rank_window: int = 126
     prefilter_liquid_symbols: bool = True
+    equity_isin_prefixes: list[str] | None = None   # e.g. ["INE"]: company shares only (no ETFs/funds)
     critical_row_policy: str = "exclude_symbol"   # exclude_symbol | exclude_rows
     gaps_are_non_trading: bool = False            # True for complete exchange files: a gap = no trades
     max_gap_bars: int = 20
@@ -165,6 +166,14 @@ class CallsCfg(_Strict):
     your_capital_inr: float = Field(1_000_000, gt=0)   # used only to translate weights into quantities
 
 
+class ShadowCfg(_Strict):
+    """Owner opt-in shadow book: tracks the top research-score strategy regardless of status.
+    Calls from it are labelled 'SHADOW - validation-rejected, track only'."""
+    enabled: bool = False
+    portfolio_name: str = "shadow_book"
+    max_strategies: int = Field(1, ge=1, le=3)
+
+
 class PaperCfg(_Strict):
     portfolio_name: str = "core_paper"
     initial_capital_inr: float = 1e7
@@ -172,6 +181,7 @@ class PaperCfg(_Strict):
     test_mode_allow_unvalidated: bool = False
     strategy_selection: SelectionCfg = SelectionCfg()
     calls: CallsCfg = CallsCfg()
+    shadow: ShadowCfg = ShadowCfg()
 
 
 class SchedulerCfg(_Strict):

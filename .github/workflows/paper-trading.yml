@@ -146,8 +146,8 @@ jobs:
       - name: Run summary and alert check
         if: always()
         run: |
-          ARGS=""
-          [ "${{ steps.task.outputs.final }}" = "true" ] && ARGS="--final-attempt"
+          ARGS="--job-status ${{ job.status }}"
+          [ "${{ steps.task.outputs.final }}" = "true" ] && ARGS="$ARGS --final-attempt"
           python scripts/automation_report.py $ARGS >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save state

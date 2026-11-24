@@ -171,3 +171,18 @@ def test_calendar_rules():
     assert not cal.is_trading_day("2026-01-24")         # Saturday
     assert cal.is_trading_day("2026-11-08")              # Sunday special (Muhurat) session
     assert cal.next_trading_day("2026-01-23") == pd.Timestamp("2026-01-27")
+
+
+def test_equity_symbols_excludes_etfs_but_keeps_renamed_stocks(tmp_path):
+    store = MarketStore(tmp_path / "m.duckdb")
+    sec = pd.DataFrame({"symbol": ["ATGL", "GOLDBEES", "PPSHARE"], "exchange": "NSE",
+                        "isin": ["INE399L01023", "INF204KB17I5", "IN9123A01011"]})
+    p = tmp_path / "securities.csv"
+    sec.to_csv(p, index=False)
+    store.ingest(FileProvider().fetch("securities", path=p))
+    ca = pd.DataFrame({"symbol": ["ADANIGAS"], "ex_date": ["2021-01-01"], "action_type": ["symbol_change"],
+                       "new_symbol": ["ATGL"]})
+    p2 = tmp_path / "corporate_actions.csv"
+    ca.to_csv(p2, index=False)
+    store.ingest(FileProvider().fetch("corporate_actions", path=p2))
+    assert store.equity_symbols(["INE"]) == {"ATGL", "ADANIGAS"}

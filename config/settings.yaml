@@ -45,6 +45,9 @@ data:
   universe_index: null
   # Load only symbols whose 20d median traded value EVER reached the floor (cannot change results).
   prefilter_liquid_symbols: true
+  # Company shares only: ISIN INE... ETFs / mutual-fund units (INF...: LIQUIDBEES, GOLDBEES, ...) and
+  # partly-paid shares (IN9...) trade in the EQ series too but are not stocks and are excluded.
+  equity_isin_prefixes: ["INE"]
   # A single invalid bar is excluded on its own (treated as no trade) rather than dropping the stock.
   critical_row_policy: "exclude_rows"
   # Exchange bhavcopies list every traded security: a missing session = no trades (suspension).
@@ -105,6 +108,13 @@ paper_trading:
     mode: "best_evidence"
     max_strategies: 2
     min_status: "Needs further validation"
+  # SHADOW book - owner opt-in (chosen 2026-11-24): follows the top research-score strategy even when
+  # validation rejected it, to build a live out-of-sample record before any real money is used.
+  # Its calls are labelled "SHADOW - track only". Validation gates are unchanged.
+  shadow:
+    enabled: true
+    portfolio_name: "shadow_trend"   # first attempt "shadow_book" (ETF bug, never filled) kept in ledger for audit
+    max_strategies: 1
   calls:
     enabled: true
     your_capital_inr: 1000000   # only used to convert weights into share quantities in the calls

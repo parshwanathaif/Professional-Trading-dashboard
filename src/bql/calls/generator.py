@@ -61,9 +61,10 @@ def _evidence(cfg: AppConfig) -> dict[str, dict]:
     return out
 
 
-def build_calls(cfg: AppConfig, allowed: dict[str, bool] | None = None) -> dict:
+def build_calls(cfg: AppConfig, allowed: dict[str, bool] | None = None, shadow: bool = False) -> dict:
     db = cfg.path("paper_db")
-    name = cfg.settings.paper_trading.portfolio_name
+    pc = cfg.settings.paper_trading
+    name = pc.shadow.portfolio_name if shadow else pc.portfolio_name
     snap = _q(db, "SELECT session_date, state_json FROM state_snapshots WHERE portfolio=? "
                   "ORDER BY session_date DESC LIMIT 1", (name,))
     if snap.empty:
@@ -137,8 +138,8 @@ def build_calls(cfg: AppConfig, allowed: dict[str, bool] | None = None) -> dict:
             "next_session": next_session, "buy": buys, "sell": sells, "hold": holds,
             "exited_today": exited.to_dict("records"), "track_record": track,
             "strategies_in_use": {k: evidence.get(k, {}) for k in in_use},
-            "research_evidence": evidence, "regime": eq["regime"].iloc[-1],
-            "test_mode": bool(cfg.settings.paper_trading.test_mode_allow_unvalidated)}
+            "research_evidence": evidence, "regime": eq["regime"].iloc[-1], "portfolio": name, "shadow": shadow,
+            "test_mode": bool(cfg.settings.paper_trading.test_mode_allow_unvalidated) and not shadow}
 
 
 def _pct(x) -> str:
@@ -148,19 +149,26 @@ def _pct(x) -> str:
         return "n/a"
 
 
-def render_markdown(c: dict) -> str:
-    L = [f"# Trading calls for {c['next_session']}", "",
+def render_markdown(c: dict, heading_level: int = 1) -> str:
+    h = "#" * heading_level
+    title = "SHADOW calls" if c.get("shadow") else "Validated calls"
+    L = [f"{h} {title} for {c['next_session']}", "",
          f"Based on NSE close of **{c['session']}** · market regime: **{c['regime']}** · generated {c['generated_ist']}",
          ""]
+    if c.get("shadow"):
+        names = ", ".join(c["strategies_in_use"]) or "none"
+        L += [f"> **SHADOW - TRACK ONLY.** Strategy: **{names}** (highest research score), but the strict validation "
+              "**REJECTED** it. These calls build a live out-of-sample record. Do not commit real money until that "
+              "record supports it. The track record below is the shadow book's own record since it started.", ""]
     if c["test_mode"]:
         L += ["> **TEST MODE** - unvalidated strategies allowed. Not supported by evidence.", ""]
     if c["track_record"]["kill_switch"]:
         L += ["> **KILL SWITCH ACTIVE** - no new BUY calls until a manual review/reset.", ""]
-    if not c["strategies_in_use"]:
+    if not c["strategies_in_use"] and not c.get("shadow"):
         L += ["> **No strategy currently meets the evidence threshold on real NSE data, so there are no BUY calls.** "
               "Existing positions (if any) are still managed below. The monthly reassessment re-checks automatically.",
               ""]
-    L += [f"## BUY ({len(c['buy'])})", ""]
+    L += [f"{h}# BUY ({len(c['buy'])})", ""]
     if c["buy"]:
         L += ["| Stock | Weight | Qty for your capital | Last close | Stop-loss | Strategy | Why |", "|---|---|---|---|---|---|---|"]
         for b in c["buy"]:
@@ -170,7 +178,7 @@ def render_markdown(c: dict) -> str:
         L.append("Buy at the next open. Place the stop-loss immediately (stop-loss-market order) and keep it until a SELL call.")
     else:
         L.append("None.")
-    L += ["", f"## SELL ({len(c['sell'])})", ""]
+    L += ["", f"{h}# SELL ({len(c['sell'])})", ""]
     if c["sell"]:
         L += ["| Stock | Entry | Last close | P&L | Why |", "|---|---|---|---|---|"]
         for s in c["sell"]:
@@ -181,9 +189,9 @@ def render_markdown(c: dict) -> str:
     else:
         L.append("None.")
     if c["exited_today"]:
-        L += ["", "### Already exited today (stop-loss / write-off)", ""]
+        L += ["", f"{h}## Already exited today (stop-loss / write-off)", ""]
         L += [f"- {e['symbol']} ({e['strategy']}): {e['exit_reason']}, {100 * e['return_pct']:.1f}%" for e in c["exited_today"]]
-    L += ["", f"## HOLD ({len(c['hold'])})", ""]
+    L += ["", f"{h}# HOLD ({len(c['hold'])})", ""]
     if c["hold"]:
         L += ["| Stock | Entry | Last close | P&L | Stop-loss | Weight | Days |", "|---|---|---|---|---|---|---|"]
         for h in sorted(c["hold"], key=lambda x: -x["unrealised_pct"]):
@@ -192,28 +200,48 @@ def render_markdown(c: dict) -> str:
     else:
         L.append("None.")
     t = c["track_record"]
-    L += ["", "## Live track record of these calls (model portfolio, after all costs)", "",
+    L += ["", f"{h}# Live track record of these calls (model portfolio, after all costs)", "",
           f"Since {t['model_portfolio_start']} ({t['sessions']} sessions): return **{t['model_return_pct']}%**, "
           f"max drawdown {t['max_drawdown_pct']}%, closed calls {t['closed_calls']}, hit rate "
           f"{t['hit_rate_pct'] if t['hit_rate_pct'] is not None else 'n/a'}%, average per closed call "
           f"{t['avg_return_per_closed_call_pct'] if t['avg_return_per_closed_call_pct'] is not None else 'n/a'}%.", ""]
     if c["strategies_in_use"]:
-        L += ["## Strategies selected (by out-of-sample evidence, re-checked monthly)", "",
+        L += [f"{h}# Strategies in use (research evidence, re-checked monthly)", "",
               "| Strategy | Status | Score | Walk-forward OOS Sharpe | Test CAGR (net) | Test max DD | Test win rate |",
               "|---|---|---|---|---|---|---|"]
         for k, v in c["strategies_in_use"].items():
             L.append(f"| {k} | {v.get('status')} | {v.get('score')} | {v.get('wf_oos_sharpe') or 0:.2f} | "
                      f"{_pct(v.get('test_cagr_net'))} | {_pct(v.get('test_max_drawdown'))} | {_pct(v.get('test_win_rate'))} |")
         L.append("")
-    L += ["---", f"_{DISCLAIMER}_", "", f"_{PAPER_ONLY_NOTICE}_"]
     return "\n".join(L)
 
 
-def write_calls(cfg: AppConfig, allowed: dict[str, bool] | None = None) -> dict[str, Path]:
+def render_daily(validated: dict, shadow: dict | None) -> str:
+    """One message per day: validated calls first, then the shadow book (if enabled)."""
+    nxt = validated["next_session"]
+    L = [f"# Trading calls for {nxt}", "",
+         f"NSE close **{validated['session']}** · regime **{validated['regime']}** · generated {validated['generated_ist']}", ""]
+    L.append(render_markdown(validated, heading_level=2))
+    if shadow is not None:
+        L += ["", render_markdown(shadow, heading_level=2)]
+    L += ["", "---", f"_{DISCLAIMER}_", "", f"_{PAPER_ONLY_NOTICE}_"]
+    return "\n".join(L)
+
+
+def write_calls(cfg: AppConfig, allowed: dict[str, bool] | None = None,
+                shadow_allowed: dict[str, bool] | None = None) -> dict[str, Path]:
     c = build_calls(cfg, allowed)
+    sh = None
+    if cfg.settings.paper_trading.shadow.enabled and shadow_allowed is not None:
+        try:
+            sh = build_calls(cfg, shadow_allowed, shadow=True)
+        except RuntimeError:
+            sh = None          # shadow book not started yet
     out = cfg.path("reports_dir") / "calls"
     out.mkdir(parents=True, exist_ok=True)
-    md = render_markdown(c)
+    md = render_daily(c, sh)
+    if sh is not None:
+        c = {**c, "shadow_book": sh}
     stem = f"calls_{c['next_session'].replace('-', '')}"
     (out / f"{stem}.md").write_text(md, encoding="utf-8")
     (out / f"{stem}.json").write_text(json.dumps(c, indent=2, default=str))
@@ -221,4 +249,6 @@ def write_calls(cfg: AppConfig, allowed: dict[str, bool] | None = None) -> dict[
     (out / "latest.json").write_text(json.dumps(c, indent=2, default=str))
     return {"md": out / f"{stem}.md", "json": out / f"{stem}.json", "latest": out / "latest.md",
             "next_session": c["next_session"], "n_buy": len(c["buy"]), "n_sell": len(c["sell"]),
-            "n_hold": len(c["hold"])}
+            "n_hold": len(c["hold"]),
+            "shadow": None if sh is None else {"strategies": list(sh["strategies_in_use"]), "n_buy": len(sh["buy"]),
+                                               "n_sell": len(sh["sell"]), "n_hold": len(sh["hold"])}}

@@ -119,7 +119,7 @@ def cmd_paper(args):
     from bql.reporting.periodic import load_portfolio_frames
 
     cfg = _cfg(args)
-    pt = PaperTrader(cfg)
+    pt = PaperTrader(cfg, shadow=args.shadow)
     if args.action == "run":
         _print(pt.run(as_of=args.as_of, start=args.start))
     elif args.action == "status":
@@ -145,7 +145,9 @@ def cmd_calls(args):
 
     cfg = _cfg(args)
     allowed, _ = PaperTrader(cfg)._strategy_permissions()
-    out = write_calls(cfg, allowed)
+    shadow_allowed = (PaperTrader(cfg, shadow=True)._strategy_permissions()[0]
+                      if cfg.settings.paper_trading.shadow.enabled else None)
+    out = write_calls(cfg, allowed, shadow_allowed)
     _print(out)
     if args.print:
         print(Path(out["latest"]).read_text())
@@ -297,6 +299,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--operator")
     s.add_argument("--note")
     s.add_argument("--strategy")
+    s.add_argument("--shadow", action="store_true", help="act on the SHADOW book (owner opt-in, unvalidated)")
     s.set_defaults(fn=cmd_paper)
     s = sub.add_parser("calls", help="write BUY/HOLD/SELL calls for the next session")
     s.add_argument("--print", action="store_true")

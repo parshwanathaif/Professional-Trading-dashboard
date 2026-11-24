@@ -10,6 +10,10 @@ Safety rules
 * Only strategies whose latest research status is allowed (config: paper_trading.allowed_statuses)
   may open positions. `test_mode_allow_unvalidated` exists for SOFTWARE TESTING only; every
   decision taken under it is tagged test_mode=1.
+* SHADOW book (owner opt-in, `paper_trading.shadow`): a separate portfolio that follows the top
+  research-score strategy regardless of validation status, to build a live out-of-sample record.
+  Every shadow decision is tagged test_mode=1. Validation gates are NOT changed by it.
+* Strategies use the parameters locked by the latest research run (selected on training data).
 * Kill switch and strategy suspension are ENFORCED and persist until a manual reset.
 * Each session is committed atomically and only once (idempotent; safe to re-run / restart).
 """
@@ -69,6 +73,47 @@ def select_best_strategies(research_root, sel) -> list[str]:
     return list(df["strategy"].head(sel.max_strategies))
 
 
+def _latest_run_dir(research_root):
+    import json
+    from pathlib import Path
+
+    p = Path(research_root) / "latest.json"
+    if not p.exists():
+        return None
+    return Path(research_root) / json.loads(p.read_text())["run_id"]
+
+
+def research_parameters(research_root) -> dict[str, dict]:
+    """Parameters locked by the latest research run (chosen on TRAINING data only)."""
+    import json
+
+    run_dir = _latest_run_dir(research_root)
+    out = {}
+    if run_dir is None:
+        return out
+    for ev in run_dir.glob("*/evaluation.json"):
+        e = json.loads(ev.read_text())
+        out[e["strategy"]] = e.get("selected_params") or {}
+    return out
+
+
+def select_shadow_strategies(research_root, shadow_cfg) -> list[str]:
+    """SHADOW book (owner opt-in): the top research-score strategies REGARDLESS of status, excluding any
+    that failed the look-ahead leakage test. Decisions are tagged unvalidated (test_mode=1)."""
+    import json
+
+    run_dir = _latest_run_dir(research_root)
+    if run_dir is None or not (run_dir / "summary.csv").exists():
+        return []
+    df = pd.read_csv(run_dir / "summary.csv")
+    ok = []
+    for name in df.sort_values("score", ascending=False)["strategy"]:
+        ev = json.loads((run_dir / name / "evaluation.json").read_text())
+        if ev.get("leakage", {}).get("passed"):
+            ok.append(name)
+    return ok[: shadow_cfg.max_strategies]
+
+
 def freshness_check(panel, t: int, min_coverage: float = 0.9) -> tuple[bool, str]:
     if t <= 0:
         return True, "first session"
@@ -84,10 +129,14 @@ def freshness_check(panel, t: int, min_coverage: float = 0.9) -> tuple[bool, str
 
 
 class PaperTrader:
-    def __init__(self, cfg: AppConfig, portfolio: str | None = None, universe_index: str | None = None):
+    def __init__(self, cfg: AppConfig, portfolio: str | None = None, universe_index: str | None = None,
+                 shadow: bool = False):
         self.cfg = cfg
         self.pcfg = cfg.settings.paper_trading
-        self.name = portfolio or self.pcfg.portfolio_name
+        self.shadow = shadow
+        if shadow and not self.pcfg.shadow.enabled:
+            raise ValueError("shadow portfolio disabled in config (paper_trading.shadow.enabled)")
+        self.name = portfolio or (self.pcfg.shadow.portfolio_name if shadow else self.pcfg.portfolio_name)
         self.store = MarketStore(cfg.path("market_db"), read_only=True)
         self.ledger = PaperLedger(cfg.path("paper_db"))
         self.universe_index = universe_index
@@ -95,6 +144,9 @@ class PaperTrader:
     def _strategy_permissions(self) -> tuple[dict[str, bool], dict[str, str]]:
         root = self.cfg.path("reports_dir") / "research"
         statuses = latest_statuses(root)
+        if self.shadow:
+            chosen = select_shadow_strategies(root, self.pcfg.shadow)
+            return {n: (n in chosen) for n, e in self.cfg.strategies.strategies.items() if e.enabled}, statuses
         allowed = {}
         for name, entry in self.cfg.strategies.strategies.items():
             if not entry.enabled:
@@ -121,11 +173,14 @@ class PaperTrader:
             panel = panel.truncate(as_of)
         ctx = ResearchContext.build(cfg, panel)
         allowed, statuses = self._strategy_permissions()
-        test_mode = self.pcfg.test_mode_allow_unvalidated
+        # shadow decisions are unvalidated by definition -> tagged test_mode=1 in the audit trail
+        test_mode = self.pcfg.test_mode_allow_unvalidated or self.shadow
+        locked = research_parameters(cfg.path("reports_dir") / "research")
         signals = {}
         for name, entry in cfg.strategies.strategies.items():
             if entry.enabled:
-                strat = make_strategy(name, entry.params, cfg.risk.position.atr_stop_multiple)
+                params = {**entry.params, **locked.get(name, {})}   # research-locked params win
+                strat = make_strategy(name, params, cfg.risk.position.atr_stop_multiple)
                 signals[name] = strat.generate(panel, ctx.universe)
 
         last_date, state = self.ledger.load_snapshot(self.name)
@@ -181,6 +236,9 @@ class PaperTrader:
                    "open_positions": len(sim.positions), "pending_orders": len(sim.pending),
                    "kill_switch": risk.state.kill_switch, "suspended": dict(risk.state.suspended),
                    "strategy_permissions": allowed, "research_statuses": statuses, "test_mode": test_mode,
+                   "portfolio": self.name, "shadow": self.shadow,
+                   "strategy_params": {k: {**cfg.strategies.strategies[k].params, **locked.get(k, {})}
+                                       for k, v in allowed.items() if v},
                    "excluded_symbols": dq.excluded_symbols}
         log_event(log, "paper run complete", **{k: v for k, v in summary.items() if k != "sessions_processed"},
                   n_sessions=len(processed))

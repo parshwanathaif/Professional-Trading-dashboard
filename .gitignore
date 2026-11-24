@@ -1,7 +1,15 @@
 # secrets
 .env
 *.key
-# runtime data & state (may contain licensed data)
+# runtime data & state (exchange data: personal research use, never commit)
+# (listed without trailing slash so symlinked folders are ignored too)
+data/raw
+data/processed
+data/synthetic
+state
+logs
+reports
+demo_workspace
 data/raw/
 data/processed/
 data/synthetic/

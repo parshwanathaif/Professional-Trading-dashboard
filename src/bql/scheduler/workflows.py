@@ -211,6 +211,10 @@ def daily_workflow(cfg: AppConfig, as_of=None, force: bool = False) -> dict:
     def paper(ctx):
         ctx["paper"] = PaperTrader(cfg).run(as_of=session)
 
+    def shadow(ctx):
+        if cfg.settings.paper_trading.shadow.enabled:
+            ctx["shadow"] = PaperTrader(cfg, shadow=True).run(as_of=session)
+
     def report(ctx):
         ledger = PaperLedger(cfg.path("paper_db"))
         store = MarketStore(store_path, read_only=True)
@@ -221,7 +225,8 @@ def daily_workflow(cfg: AppConfig, as_of=None, force: bool = False) -> dict:
 
     steps = [("check_calendar", check_calendar), ("import_new_data", import_data), ("validate_data", validate),
              ("check_data_availability", availability),
-             ("indicators_regime_signals_risk_paper_update", paper), ("daily_report", report)]
+             ("indicators_regime_signals_risk_paper_update", paper), ("shadow_book_update", shadow),
+             ("daily_report", report)]
     return run_workflow(cfg, "daily", f"daily:{session.date()}", steps, force)
 
 

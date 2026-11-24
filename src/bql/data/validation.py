@@ -238,6 +238,10 @@ def validate_store(store, cfg, as_of=None, symbols: list[str] | None = None) -> 
     d = cfg.settings.data
     if symbols is None and d.prefilter_liquid_symbols:
         symbols = store.liquid_symbols(d.min_median_traded_value_inr)
+    if d.equity_isin_prefixes:
+        eq = store.equity_symbols(d.equity_isin_prefixes)
+        if eq is not None:
+            symbols = sorted(eq if symbols is None else set(symbols) & eq)
     prices = store.prices(exchange="NSE", symbols=symbols)
     bench = store.benchmark(cfg.settings.backtest.benchmark)
     if as_of is not None:
