@@ -151,15 +151,16 @@ def _pct(x) -> str:
 
 def render_markdown(c: dict, heading_level: int = 1) -> str:
     h = "#" * heading_level
-    title = "SHADOW calls" if c.get("shadow") else "Validated calls"
+    title = "SHADOW calls" if c.get("shadow") else "Validated calls"   # validated = passed the configured min status
     L = [f"{h} {title} for {c['next_session']}", "",
          f"Based on NSE close of **{c['session']}** · market regime: **{c['regime']}** · generated {c['generated_ist']}",
          ""]
     if c.get("shadow"):
-        names = ", ".join(c["strategies_in_use"]) or "none"
-        L += [f"> **SHADOW - TRACK ONLY.** Strategy: **{names}** (highest research score), but the strict validation "
-              "**REJECTED** it. These calls build a live out-of-sample record. Do not commit real money until that "
-              "record supports it. The track record below is the shadow book's own record since it started.", ""]
+        names = ", ".join(f"{k} (status: {v.get('status', 'unknown')})" for k, v in c["strategies_in_use"].items()) or "none"
+        L += [f"> **SHADOW - TRACK ONLY.** Strategy: **{names}**, the highest research score, which has **not passed** "
+              "strict historical validation. These calls build a live out-of-sample record. Do not commit real money "
+              "until that record supports it. The track record below is the shadow book's own record since it started.",
+              ""]
     if c["test_mode"]:
         L += ["> **TEST MODE** - unvalidated strategies allowed. Not supported by evidence.", ""]
     if c["track_record"]["kill_switch"]:

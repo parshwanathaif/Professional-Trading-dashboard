@@ -107,7 +107,9 @@ paper_trading:
   strategy_selection:
     mode: "best_evidence"
     max_strategies: 2
-    min_status: "Needs further validation"
+    # Owner decision 2026-11-24 ("shadow calls first"): the main (real-use) book only takes strategies
+    # that PASSED historical validation; weaker evidence is tracked in the shadow book instead.
+    min_status: "Passed historical validation"
   # SHADOW book - owner opt-in (chosen 2026-11-24): follows the top research-score strategy even when
   # validation rejected it, to build a live out-of-sample record before any real money is used.
   # Its calls are labelled "SHADOW - track only". Validation gates are unchanged.

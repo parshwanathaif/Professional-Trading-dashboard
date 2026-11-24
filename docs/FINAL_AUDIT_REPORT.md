@@ -2,25 +2,27 @@
 
 **Date:** 2026-11-23 (IST) · **Version:** 0.1.0 · **Scope:** Phases 1–10
 
-> **Headline (updated 2026-11-24).** The platform now runs on **official NSE data from 2013-01-01 to 2026-11-23**: 6.29M stock-days, 17,513 corporate actions, a survivorship-safe point-in-time universe, a data-quality gate that passes, and an NSE vs BSE cross-check with a 0.12% median difference. **On this real history, strict validation rejected all six strategies** (section 5a). The strongest, 50/250-day trend following, failed only the backtest-overfitting (PBO) gate. In line with the rules, no BUY calls are issued until a strategy passes or the owner explicitly decides otherwise. The synthetic-data results in sections 5–6 are kept for reference.
+> **Headline (updated 2026-11-24).** The platform runs on **official NSE data from 2013-01-01 to 2026-11-23**: 6.29M stock-days, 17,000+ corporate actions, a survivorship-safe point-in-time universe of company shares, a passing data-quality gate, and an NSE vs BSE cross-check with a 0.12% median difference. **On this real history no strategy passed historical validation** (section 5a). 50/250-day trend following is the strongest (status "Needs further validation") and runs in an owner-approved **shadow book**, with daily track-only calls.
 
-## 5a. Validation outcome on REAL NSE data (2013–2026)
-Universe: each day, the top 300 stocks by trailing 126-day median traded value (survivorship-safe, point-in-time). Train 2014-03 → 2021-12, validation → 2024-06, **untouched test 2024-06-04 → 2026-11-23**. Benchmark: NIFTY 50 price index, test CAGR 6.2%. Sharpe ratios are in excess of 6.5% risk-free.
+## 5a. Validation outcome on REAL NSE data (2013–2026), company shares only
+Universe: each day, the top 300 company shares (ISIN INE…) by trailing 126-day median traded value. The universe is survivorship-safe and point-in-time. Train 2014-03 → 2021-12, validation → 2024-06, **untouched test 2024-06-04 → 2026-11-23**. Benchmark: NIFTY 50 price index, test CAGR 6.2%. Sharpe ratios are in excess of 6.5% risk-free. Run `research_20261124T164309`.
 
-| Strategy | Status | Score | WF OOS Sharpe | WF OOS CAGR | Test CAGR net (gross) | Test max DD | 2× cost Sharpe | PBO | Failed critical gates |
-|---|---|---|---|---|---|---|---|---|---|
-| trend_ma (50/250) | Rejected | 66.4 | **0.89** | **22.3%** | **12.5%** (13.6%) | −26.7% | 1.03 | 0.78 | PBO only |
-| xs_momentum | Rejected | 49.5 | −0.21 | 2.3% | 13.9% (15.3%) | −28.3% | 0.41 | 0.88 | WF OOS ≤ 0; PBO |
-| vol_breakout | Rejected | 42.4 | −0.47 | −1.3% | 8.6% (11.1%) | −23.8% | 0.30 | 0.72 | WF OOS ≤ 0; PBO |
-| donchian_breakout | Rejected | 36.4 | −0.09 | 3.8% | −7.3% (−4.3%) | −31.2% | 0.12 | 0.33 | WF OOS ≤ 0; test ≤ 0 |
-| rsi_mean_reversion | Rejected | 20.6 | −0.81 | 0.1% | −2.1% (1.0%) | −13.8% | −0.53 | 0.01 | WF, test, costs |
-| bollinger_reversion | Rejected | 15.3 | −0.60 | −0.5% | −9.6% (−4.1%) | −31.8% | −0.94 | 0.08 | WF, test, costs |
+| Strategy | Status | Score | WF OOS Sharpe | WF OOS CAGR | Test CAGR net | Test max DD | 2× cost Sharpe | PBO | DSR | Failed gates |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **trend_ma (50/250)** | **Needs further validation** | 57.8 | **0.68** | **18.0%** | 6.2% | −33.6% | 1.21 | 0.26 | 0.02 | DSR only |
+| xs_momentum | Rejected | 48.8 | −0.19 | 2.5% | 15.8% | −30.7% | 0.43 | 0.90 | 0.00 | WF OOS ≤ 0; PBO |
+| donchian_breakout | Rejected | 43.6 | 0.03 | 5.9% | −7.8% | −32.5% | 0.26 | 0.13 | 0.00 | test ≤ 0 |
+| vol_breakout | Rejected | 39.6 | −0.43 | −0.9% | 1.5% | −26.0% | 0.33 | 0.70 | 0.00 | WF, test, PBO |
+| rsi_mean_reversion | Rejected | 20.5 | −0.80 | 0.1% | −2.5% | −14.0% | −0.56 | 0.01 | 0.00 | WF, test, costs |
+| bollinger_reversion | Rejected | 17.1 | −0.73 | −2.2% | −9.7% | −31.2% | −0.93 | 0.15 | 0.00 | WF, test, costs |
+
+**Data defect found and fixed during this audit.** The first real-data run (`research_20261124T154821`) included **ETFs and mutual-fund units** (147 symbols such as LIQUIDBEES, GOLDBEES and SILVERBEES), which trade in the EQ series. Trend following bought trending gold, silver and liquid ETFs, which inflated its 2024–26 test CAGR to 12.5% and distorted PBO. With company shares only, its test CAGR is 6.2%, merely equal to the index, while its walk-forward record (18% CAGR) stays strong. Both runs are kept for audit.
 
 Observations:
-- Short-term mean reversion does not survive Indian delivery costs (STT on both sides). Gross results are already weak and net results are negative.
-- Trend following is the only family with positive walk-forward out-of-sample results. It is also positive in the untouched test and robust to doubled costs, and 100% of its parameter grid was positive in training. It failed PBO: with every parameter variant similar, picking the in-sample best adds nothing. The Deflated Sharpe Ratio is only 5%, so statistical confidence is low. It loses in bearish and stress regimes, and its win rate is about 15% (a few large winners).
-- A proposed rule change that would waive PBO when all fixed-parameter variants are profitable out of sample was **not applied**. It would have been a gate change made after seeing the results; the decision is left to the owner.
-- Momentum and volatility breakout looked good in the 2024–26 test window but were negative across the walk-forward folds. This is the same single-window trap seen in the synthetic audit.
+- Trend following is the only family with positive walk-forward results that also passes every critical gate. Statistical confidence is low (DSR 2%), drawdowns run to about −34%, the win rate is about 12% (a few large winners), and it lost money in bearish and stress regimes.
+- Short-term mean reversion does not survive Indian delivery costs.
+- Momentum looks good in the 2024–26 test window only; it is negative across walk-forward folds.
+- **Owner decision (2026-11-24): "shadow calls first".** The main (real-use) book requires "Passed historical validation", so it currently has no strategy. Trend following runs in a separate **shadow book**, with calls published daily and marked TRACK ONLY, to build a live out-of-sample record. No validation gate was loosened.
 
 ## 1. What has been built
 | Component | Location | Status |
