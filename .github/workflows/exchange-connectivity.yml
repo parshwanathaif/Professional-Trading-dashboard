@@ -1,0 +1,33 @@
+name: Exchange connectivity check
+
+# Manual check that GitHub-hosted runners can reach the official NSE/BSE archive files
+# used by the automated paper-trading pipeline (polite: a handful of requests).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Probe archive endpoints
+        run: |
+          UA="BharatQuantLab-research/0.1 (personal non-commercial research; rate-limited)"
+          for u in \
+            "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv" \
+            "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_20261120_F_0000.csv.zip" \
+            "https://nsearchives.nseindia.com/content/historical/EQUITIES/2013/JAN/cm02JAN2013bhav.csv.zip" \
+            "https://nsearchives.nseindia.com/content/indices/ind_close_all_20112026.csv" \
+            "https://nsearchives.nseindia.com/archives/equities/bhavcopy/pr/PR201126.zip" \
+            "https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_20261120_F_0000.CSV"; do
+            curl -s -o /tmp/f -m 40 -A "$UA" -w "%{http_code} %{size_download} $u\n" "$u" || echo "ERR $u"
+            head -c 2 /tmp/f | od -c | head -1
+            sleep 1
+          done
